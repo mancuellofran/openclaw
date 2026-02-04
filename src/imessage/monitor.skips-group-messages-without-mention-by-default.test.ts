@@ -101,6 +101,47 @@ beforeEach(() => {
 });
 
 describe("monitorIMessageProvider", () => {
+  it("skips echo messages that match recent outbound ids", async () => {
+    sendMock.mockResolvedValue({ messageId: "123" });
+    const run = monitorIMessageProvider();
+    await waitForSubscribe();
+
+    notificationHandler?.({
+      method: "message",
+      params: {
+        message: {
+          id: 1,
+          sender: "+15550001111",
+          is_from_me: false,
+          text: "ping",
+          is_group: false,
+        },
+      },
+    });
+
+    await flush();
+
+    notificationHandler?.({
+      method: "message",
+      params: {
+        message: {
+          id: 123,
+          sender: "+15550001111",
+          is_from_me: false,
+          text: "ok",
+          is_group: false,
+        },
+      },
+    });
+
+    await flush();
+    closeResolve?.();
+    await run;
+
+    expect(replyMock).toHaveBeenCalledTimes(1);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
   it("skips group messages without a mention by default", async () => {
     const run = monitorIMessageProvider();
     await waitForSubscribe();

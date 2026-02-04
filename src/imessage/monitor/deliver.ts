@@ -6,10 +6,7 @@ import { loadConfig } from "../../config/config.js";
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import { convertMarkdownTables } from "../../markdown/tables.js";
 import { sendMessageIMessage } from "../send.js";
-
-type SentMessageCache = {
-  remember: (scope: string, text: string) => void;
-};
+import { buildIMessageEchoScope, type SentMessageCache } from "./echo-cache.js";
 
 export async function deliverReplies(params: {
   replies: ReplyPayload[];
@@ -23,7 +20,7 @@ export async function deliverReplies(params: {
 }) {
   const { replies, target, client, runtime, maxBytes, textLimit, accountId, sentMessageCache } =
     params;
-  const scope = `${accountId ?? ""}:${target}`;
+  const scope = buildIMessageEchoScope({ accountId, target });
   const cfg = loadConfig();
   const tableMode = resolveMarkdownTableMode({
     cfg,
@@ -39,29 +36,30 @@ export async function deliverReplies(params: {
       continue;
     }
     if (mediaList.length === 0) {
-      sentMessageCache?.remember(scope, text);
       for (const chunk of chunkTextWithMode(text, textLimit, chunkMode)) {
-        await sendMessageIMessage(target, chunk, {
+        const result = await sendMessageIMessage(target, chunk, {
           maxBytes,
           client,
           accountId,
         });
-        sentMessageCache?.remember(scope, chunk);
+        sentMessageCache?.rememberText(scope, chunk);
+        sentMessageCache?.rememberId(scope, result.messageId);
       }
     } else {
       let first = true;
       for (const url of mediaList) {
         const caption = first ? text : "";
         first = false;
-        await sendMessageIMessage(target, caption, {
+        const result = await sendMessageIMessage(target, caption, {
           mediaUrl: url,
           maxBytes,
           client,
           accountId,
         });
         if (caption) {
-          sentMessageCache?.remember(scope, caption);
+          sentMessageCache?.rememberText(scope, caption);
         }
+        sentMessageCache?.rememberId(scope, result.messageId);
       }
     }
     runtime.log?.(`imessage: delivered reply to ${target}`);
